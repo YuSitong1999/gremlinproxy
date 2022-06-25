@@ -5,7 +5,9 @@ import (
 	"compress/gzip"
 	"compress/zlib"
 	"encoding/json"
-	"github.com/ResilienceTesting/gremlinproxy/config"
+	"fmt"
+	"github.com/YuSitong1999/gremlinproxy/config"
+	"github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -17,8 +19,6 @@ import (
 	str "strings"
 	"sync"
 	"time"
-	"fmt"
-	"github.com/Sirupsen/logrus"
 )
 
 var proxylog = config.ProxyLogger
@@ -27,13 +27,13 @@ var globallog = config.GlobalLogger
 // Proxy implements the proxying logic between a pair of services.
 // A single router can have multiple proxies, one for each service that the local service needs to talk to
 type Proxy struct {
-	name       string
-	testid     string
-	port       uint16
-	bindhost   string
-	Protocol   string
-	rules      map[MessageType][]Rule
-	ruleLock   *sync.RWMutex
+	name     string
+	testid   string
+	port     uint16
+	bindhost string
+	Protocol string
+	rules    map[MessageType][]Rule
+	ruleLock *sync.RWMutex
 	/**
 	expects    map[string]chan int
 	expectLock *sync.RWMutex
@@ -49,14 +49,14 @@ func NewProxy(serviceName string, conf config.ProxyConfig,
 	var p Proxy
 	p.name = serviceName
 	if lbconf.Hosts == nil || len(lbconf.Hosts) < 1 {
-		fmt.Println("Missing backend instances for service "+serviceName)
+		fmt.Println("Missing backend instances for service " + serviceName)
 		os.Exit(1)
 	}
 	p.lb = NewLoadBalancer(lbconf)
 	p.port = conf.Port
 	p.httpclient = http.Client{}
 	p.bindhost = conf.BindHost
-	if (conf.BindHost == "") {
+	if conf.BindHost == "" {
 		p.bindhost = "localhost"
 	}
 
@@ -81,7 +81,7 @@ func (p *Proxy) getRule(r MessageType, reqID string, data []byte) Rule {
 		globallog.WithField("ruleCounter", counter).Debug("Rule counter")
 		//  If request ID is empty, do not match unless wildcard rule
 		if reqID == "" {
-			if (rule.HeaderPattern == "*" || rule.BodyPattern == "*") {
+			if rule.HeaderPattern == "*" || rule.BodyPattern == "*" {
 				return rule
 			}
 			continue
@@ -92,7 +92,7 @@ func (p *Proxy) getRule(r MessageType, reqID string, data []byte) Rule {
 			return rule
 		}
 
-		if (rule.HeaderPattern == "*" && rule.BodyPattern == "*") {
+		if rule.HeaderPattern == "*" && rule.BodyPattern == "*" {
 			return rule
 		}
 
@@ -100,8 +100,8 @@ func (p *Proxy) getRule(r MessageType, reqID string, data []byte) Rule {
 			b, err := regexp.Match(rule.HeaderPattern, []byte(reqID))
 			if err != nil {
 				globallog.WithFields(logrus.Fields{
-					"reqID":   reqID,
-					"errmsg":  err.Error(),
+					"reqID":         reqID,
+					"errmsg":        err.Error(),
 					"headerpattern": rule.HeaderPattern,
 				}).Error("Rule request ID matching error")
 				continue
@@ -124,8 +124,8 @@ func (p *Proxy) getRule(r MessageType, reqID string, data []byte) Rule {
 				b, err := regexp.Match(rule.BodyPattern, data)
 				if err != nil {
 					globallog.WithFields(logrus.Fields{
-						"reqID":   reqID,
-						"errmsg":  err.Error(),
+						"reqID":       reqID,
+						"errmsg":      err.Error(),
 						"bodypattern": rule.BodyPattern,
 					}).Error("Rule body matching error")
 					continue
@@ -172,10 +172,10 @@ func glueHostAndPort(host string, port uint16) string {
 // Run starts up a proxy in the desired mode: tcp or http. This is a blocking call
 func (p *Proxy) Run() {
 	globallog.WithFields(logrus.Fields{
-		"service": p.name,
-		"bindhost" : p.bindhost,
-		"port":    p.port,
-		"protocol":    p.Protocol}).Info("Starting up proxy")
+		"service":  p.name,
+		"bindhost": p.bindhost,
+		"port":     p.port,
+		"protocol": p.Protocol}).Info("Starting up proxy")
 	switch str.ToLower(p.Protocol) {
 	case "tcp":
 		localhost, err := net.ResolveTCPAddr("tcp", glueHostAndPort(p.bindhost, p.port))
@@ -225,8 +225,8 @@ func (p *Proxy) Run() {
 
 // 	   var i int = 0
 // 	   var n2 int = 0
-	   
-// 	   for (n2 < n) {		
+
+// 	   for (n2 < n) {
 // 			i, err = dst.Write(data[n2:n])
 // 			if err != nil {
 // 				src.Close()
@@ -257,30 +257,30 @@ func (p *Proxy) proxyTCP(conn *net.TCPConn) {
 	t := time.Now()
 
 	//FIXME: Add proper delay support for TCP channels.
-	if ((rule.DelayProbability > 0.0) &&
-		drawAndDecide(rule.DelayDistribution, rule.DelayProbability)) {
+	if (rule.DelayProbability > 0.0) &&
+		drawAndDecide(rule.DelayDistribution, rule.DelayProbability) {
 		proxylog.WithFields(logrus.Fields{
-			"dest": p.name,
-			"source": config.ProxyFor,
-			"protocol" : "tcp",
-			"action" : "delay",
-			"rule": rule.ToConfig(),
-			"testid": p.getmyID(),
-			"ts" : t.Format("2006-01-02T15:04:05.999999"),
+			"dest":     p.name,
+			"source":   config.ProxyFor,
+			"protocol": "tcp",
+			"action":   "delay",
+			"rule":     rule.ToConfig(),
+			"testid":   p.getmyID(),
+			"ts":       t.Format("2006-01-02T15:04:05.999999"),
 		}).Info("Stream")
 		time.Sleep(rule.DelayTime)
 	}
 
-	if ((rule.AbortProbability > 0.0) &&
-		drawAndDecide(rule.AbortDistribution, rule.AbortProbability)) {
+	if (rule.AbortProbability > 0.0) &&
+		drawAndDecide(rule.AbortDistribution, rule.AbortProbability) {
 		proxylog.WithFields(logrus.Fields{
-			"dest": p.name,
-			"source": config.ProxyFor,
-			"protocol" : "tcp",
-			"action" : "abort",
-			"rule": rule.ToConfig(),
-			"testid": p.getmyID(),
-			"ts" : t.Format("2006-01-02T15:04:05.999999"),
+			"dest":     p.name,
+			"source":   config.ProxyFor,
+			"protocol": "tcp",
+			"action":   "abort",
+			"rule":     rule.ToConfig(),
+			"testid":   p.getmyID(),
+			"ts":       t.Format("2006-01-02T15:04:05.999999"),
 		}).Info("Stream")
 		conn.SetLinger(0)
 		conn.Close()
@@ -322,14 +322,14 @@ func (p *Proxy) proxyTCP(conn *net.TCPConn) {
 
 /* FIXME: BUG This method reads requests/replies into memory.
 * DO NOT use this on very large size requests.
-*/
+ */
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	reqID := req.Header.Get(config.TrackingHeader)
 	var rule Rule
 	var decodedData []byte
 	var cont bool
 	data, err := readBody(req.Body)
-	if (reqID != "") {
+	if reqID != "" {
 		// Process the request, see if any rules match it.
 		decodedData, err := decodeBody(data, req.Header.Get("content-type"),
 			req.Header.Get("content-encoding"))
@@ -342,7 +342,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		} else {
 			// Check if we were expecting it on the wire:
 			//p.expectCheck(decodedData)
-			
+
 			// Get the rule
 			rule = p.getRule(Request, reqID, decodedData)
 		}
@@ -359,8 +359,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		"host":    host}).Debug("Sending to")
 
 	// If scheme (http/https is not explicitly specified, construct a http request to the requested service
-	if (!p.httpregexp.MatchString(host)) {
-		host = "http://"+host
+	if !p.httpregexp.MatchString(host) {
+		host = "http://" + host
 	}
 	newreq, err := http.NewRequest(req.Method, host+req.RequestURI, bytes.NewReader(data))
 	if err != nil {
@@ -369,7 +369,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		globallog.WithFields(logrus.Fields{
 			"service": p.name,
 			"reqID":   reqID,
-			"errmsg" : err.Error()}).Error("Could not construct proxy request")
+			"errmsg":  err.Error()}).Error("Could not construct proxy request")
 		return
 	}
 
@@ -405,7 +405,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	rule = NopRule
 	data, err = readBody(resp.Body)
 	resp.Body.Close()
-	if (reqID != "") {
+	if reqID != "" {
 		decodedData, err = decodeBody(data, resp.Header.Get("content-type"),
 			resp.Header.Get("content-encoding"))
 
@@ -422,7 +422,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			// Execute rules, if any
 			rule = p.getRule(Response, reqID, decodedData)
 		}
-	
+
 		cont = p.executeResponseRule(reqID, rule, resp, decodedData, respTime, w)
 		if !cont {
 			return
@@ -448,17 +448,17 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 // Returns a bool, indicating whether we should continue request processing further or not
 func (p *Proxy) doHTTPAborts(reqID string, rule Rule, w http.ResponseWriter) bool {
 
-	if (rule.ErrorCode < 0)	{
+	if rule.ErrorCode < 0 {
 		hj, ok := w.(http.Hijacker)
 		if !ok {
 			// Revert to 500
 			status := http.StatusInternalServerError
 			http.Error(w, http.StatusText(status), status)
 			globallog.WithFields(logrus.Fields{
-				"service": p.name,
-				"reqID":  reqID,
-				"abortmethod" : "reset",
-				"errmsg" : "Hijacking not supported",
+				"service":     p.name,
+				"reqID":       reqID,
+				"abortmethod": "reset",
+				"errmsg":      "Hijacking not supported",
 			}).Error("Hijacking not supported")
 			return false
 		}
@@ -469,20 +469,20 @@ func (p *Proxy) doHTTPAborts(reqID string, rule Rule, w http.ResponseWriter) boo
 			status := http.StatusInternalServerError
 			http.Error(w, http.StatusText(status), status)
 			globallog.WithFields(logrus.Fields{
-				"service": p.name,
-				"reqID":  reqID,
-				"abortmethod" : "reset",
-				"errmsg" : err.Error(),
+				"service":     p.name,
+				"reqID":       reqID,
+				"abortmethod": "reset",
+				"errmsg":      err.Error(),
 			}).Error("Hijacking Failed")
 			return false
 		}
 
 		// Close the connection, discarding any unacked data
 		tcpConn, ok := conn.(*net.TCPConn)
-		if (ok) {
+		if ok {
 			tcpConn.SetLinger(0)
 			tcpConn.Close()
-		} else  {
+		} else {
 			//we couldn't type cast net.Conn to net.TCPConn successfully.
 			//This shouldn't occur unless the underlying transport is not TCP.
 			conn.Close()
@@ -495,7 +495,6 @@ func (p *Proxy) doHTTPAborts(reqID string, rule Rule, w http.ResponseWriter) boo
 	return true
 }
 
-
 // Fault injection happens here.
 // Log every request with valid reqID irrespective of fault injection
 func (p *Proxy) executeRequestRule(reqID string, rule Rule, req *http.Request, body []byte, w http.ResponseWriter) bool {
@@ -507,17 +506,17 @@ func (p *Proxy) executeRequestRule(reqID string, rule Rule, req *http.Request, b
 	if rule.Enabled {
 		globallog.WithField("rule", rule.ToConfig()).Debug("execRequestRule")
 
-		if ((rule.DelayProbability > 0.0) &&
-			drawAndDecide(rule.DelayDistribution, rule.DelayProbability)) {
+		if (rule.DelayProbability > 0.0) &&
+			drawAndDecide(rule.DelayDistribution, rule.DelayProbability) {
 			// In future, this could be dynamically computed -- variable delays
 			delay = rule.DelayTime
 			actions = append(actions, "delay")
 			time.Sleep(rule.DelayTime)
 		}
 
-		if ((rule.AbortProbability > 0.0) &&
+		if (rule.AbortProbability > 0.0) &&
 			drawAndDecide(rule.AbortDistribution, rule.AbortProbability) &&
-			p.doHTTPAborts(reqID, rule, w)) {
+			p.doHTTPAborts(reqID, rule, w) {
 			actions = append(actions, "abort")
 			errorCode = rule.ErrorCode
 			retVal = false
@@ -525,18 +524,18 @@ func (p *Proxy) executeRequestRule(reqID string, rule Rule, req *http.Request, b
 	}
 
 	proxylog.WithFields(logrus.Fields{
-		"dest": p.name,
-		"source": config.ProxyFor,
-		"protocol" : "http",
-		"trackingheader":  config.TrackingHeader,
-		"reqID":  reqID,
-		"testid": p.getmyID(),
-		"actions" : "["+str.Join(actions, ",")+"]",
-		"delaytime": delay.Nanoseconds()/(1000*1000), //actual time req was delayed in milliseconds
-		"errorcode": errorCode, //actual error injected or -2
-		"uri":  req.RequestURI,
-		"ts" : t.Format("2006-01-02T15:04:05.999999"),
-		"rule": rule.ToConfig(),
+		"dest":           p.name,
+		"source":         config.ProxyFor,
+		"protocol":       "http",
+		"trackingheader": config.TrackingHeader,
+		"reqID":          reqID,
+		"testid":         p.getmyID(),
+		"actions":        "[" + str.Join(actions, ",") + "]",
+		"delaytime":      delay.Nanoseconds() / (1000 * 1000), //actual time req was delayed in milliseconds
+		"errorcode":      errorCode,                           //actual error injected or -2
+		"uri":            req.RequestURI,
+		"ts":             t.Format("2006-01-02T15:04:05.999999"),
+		"rule":           rule.ToConfig(),
 	}).Info("Request")
 
 	return retVal
@@ -551,17 +550,17 @@ func (p *Proxy) executeResponseRule(reqID string, rule Rule, resp *http.Response
 	t := time.Now()
 
 	if rule.Enabled {
-		if ((rule.DelayProbability > 0.0) &&
-			drawAndDecide(rule.DelayDistribution, rule.DelayProbability)) {
+		if (rule.DelayProbability > 0.0) &&
+			drawAndDecide(rule.DelayDistribution, rule.DelayProbability) {
 			// In future, this could be dynamically computed -- variable delays
 			delay = rule.DelayTime
 			actions = append(actions, "delay")
 			time.Sleep(rule.DelayTime)
 		}
 
-		if ((rule.AbortProbability > 0.0) &&
+		if (rule.AbortProbability > 0.0) &&
 			drawAndDecide(rule.AbortDistribution, rule.AbortProbability) &&
-			p.doHTTPAborts(reqID, rule, w)) {
+			p.doHTTPAborts(reqID, rule, w) {
 			actions = append(actions, "abort")
 			errorCode = rule.ErrorCode
 			retVal = false
@@ -569,22 +568,22 @@ func (p *Proxy) executeResponseRule(reqID string, rule Rule, resp *http.Response
 	}
 
 	proxylog.WithFields(logrus.Fields{
-		"dest": p.name,
-		"source": config.ProxyFor,
-		"protocol" : "http",
-		"trackingheader":  config.TrackingHeader,
-		"reqID":  reqID,
-		"testid": p.getmyID(),
-		"actions" : "["+str.Join(actions, ",")+"]",
-		"delaytime": delay.Nanoseconds()/(1000*1000), //actual time resp was delayed in milliseconds
-		"errorcode": errorCode, //actual error injected or -2
-		"status": resp.StatusCode,
-		"duration": after.String(),
-		"ts" : t.Format("2006-01-02T15:04:05.999999"),
+		"dest":           p.name,
+		"source":         config.ProxyFor,
+		"protocol":       "http",
+		"trackingheader": config.TrackingHeader,
+		"reqID":          reqID,
+		"testid":         p.getmyID(),
+		"actions":        "[" + str.Join(actions, ",") + "]",
+		"delaytime":      delay.Nanoseconds() / (1000 * 1000), //actual time resp was delayed in milliseconds
+		"errorcode":      errorCode,                           //actual error injected or -2
+		"status":         resp.StatusCode,
+		"duration":       after.String(),
+		"ts":             t.Format("2006-01-02T15:04:05.999999"),
 		//log header/body?
 		"rule": rule.ToConfig(),
 	}).Info("Response")
-	
+
 	return retVal
 }
 
@@ -674,37 +673,37 @@ func (p *Proxy) Expect(pattern string, timeout time.Duration) int {
 **/
 
 func (p *Proxy) SetTestID(testID string) {
-//	p.expectLock.Lock()
-//	defer p.expectLock.Unlock()
+	//	p.expectLock.Lock()
+	//	defer p.expectLock.Unlock()
 	p.testid = testID
 	t := time.Now()
 	proxylog.WithFields(logrus.Fields{
-		"source":     config.ProxyFor,
-		"dest": p.name,
-		"testid":  testID,
-		"ts" : t.Format("2006-01-02T15:04:05.999999"),
+		"source": config.ProxyFor,
+		"dest":   p.name,
+		"testid": testID,
+		"ts":     t.Format("2006-01-02T15:04:05.999999"),
 	}).Info("Test start")
 }
 
 func (p *Proxy) getmyID() string {
-//	p.expectLock.RLock()
-//	defer p.expectLock.RUnlock()
+	//	p.expectLock.RLock()
+	//	defer p.expectLock.RUnlock()
 	return p.testid
 }
 
 func (p *Proxy) StopTest(testID string) bool {
 	t := time.Now()
-//	p.expectLock.Lock()
-//	defer p.expectLock.Unlock()
+	//	p.expectLock.Lock()
+	//	defer p.expectLock.Unlock()
 	if testID == p.testid {
 		p.testid = ""
 		return true
 	}
 	proxylog.WithFields(logrus.Fields{
-		"source":     config.ProxyFor,
-		"dest": p.name,
-		"ts" : t.Format("2006-01-02T15:04:05.999999"),
-		"testid":  testID,
+		"source": config.ProxyFor,
+		"dest":   p.name,
+		"ts":     t.Format("2006-01-02T15:04:05.999999"),
+		"testid": testID,
 	}).Info("Test stop")
 	return false
 }
@@ -751,9 +750,9 @@ func tryGetJSON(raw []byte) interface{} {
 // drawAndDecide draws from a given distribution and compares (<) the result to a threshold.
 // This determines whether an action should be taken or not
 func drawAndDecide(distribution ProbabilityDistribution, probability float64) bool {
-//	fmt.Printf("In draw and decide with dis %s, thresh %f", DistributionString(distribution), probability);
+	//	fmt.Printf("In draw and decide with dis %s, thresh %f", DistributionString(distribution), probability);
 
-	switch (distribution) {
+	switch distribution {
 	case ProbUniform:
 		return rand.Float64() < probability
 	case ProbExponential:
@@ -761,7 +760,7 @@ func drawAndDecide(distribution ProbabilityDistribution, probability float64) bo
 	case ProbNormal:
 		return rand.NormFloat64() < probability
 	default:
-//		globallog.Warn("Unknown probability distribution " + distribution + ", defaulting to coin flip")
+		//		globallog.Warn("Unknown probability distribution " + distribution + ", defaulting to coin flip")
 		return rand.Float64() < .5
 	}
 }

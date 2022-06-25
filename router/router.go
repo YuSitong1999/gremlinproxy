@@ -5,9 +5,9 @@ import (
 	// "bytes"
 	"encoding/json"
 	"errors"
-	"github.com/ResilienceTesting/gremlinproxy/config"
-	"github.com/ResilienceTesting/gremlinproxy/proxy"
-	"github.com/ResilienceTesting/gremlinproxy/services"
+	"github.com/YuSitong1999/gremlinproxy/config"
+	"github.com/YuSitong1999/gremlinproxy/proxy"
+	"github.com/YuSitong1999/gremlinproxy/services"
 	// "io"
 	"net/http"
 	// "os"
@@ -141,7 +141,7 @@ func restHello(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 func (r *Router) SetInstances(w http.ResponseWriter, req *http.Request, params httprouter.Params) {
 	serviceName := params.ByName("service")
 	hostlist := params.ByName("hosts")
-	log.Debug("name="+serviceName+", hosts="+hostlist)
+	log.Debug("name=" + serviceName + ", hosts=" + hostlist)
 	s, exists := r.serviceNameMap[serviceName]
 	if !exists {
 		w.WriteHeader(http.StatusNotFound)
@@ -182,7 +182,7 @@ func (r *Router) RemoveInstances(w http.ResponseWriter, req *http.Request, param
 		return
 	}
 
-	s.Proxy.SetInstances(make([]string,0))
+	s.Proxy.SetInstances(make([]string, 0))
 	w.Write([]byte(config.OK))
 }
 
@@ -221,7 +221,7 @@ func (r *Router) readRule(req *http.Request) (*services.Service, *proxy.Rule, er
 
 	//check if source matches the router name
 	if (ruleconf.Source != config.ProxyFor) {
-		log.WithField("Source",ruleconf.Source).Warning("Rule not targeted for this Router")
+		log.WithField("Source", ruleconf.Source).Warning("Rule not targeted for this Router")
 		return nil, nil, errors.New("Router name does not match Source " + ruleconf.Source)
 	}
 

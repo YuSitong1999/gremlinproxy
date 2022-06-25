@@ -1,8 +1,8 @@
 package proxy
 
 import (
-	"github.com/ResilienceTesting/gremlinproxy/config"
-	"github.com/Sirupsen/logrus"
+	"github.com/YuSitong1999/gremlinproxy/config"
+	"github.com/sirupsen/logrus"
 	"math/rand"
 	str "strings"
 	"sync"
@@ -12,10 +12,10 @@ import (
 
 // LoadBalancer is in charge of switching up which host the request goes to
 type LoadBalancer struct {
-	mode         string
-	hosts        []string
-	hostLock     *sync.RWMutex
-	index        uint
+	mode     string
+	hosts    []string
+	hostLock *sync.RWMutex
+	index    uint
 }
 
 // NewLoadBalancer creates a new load balancer
@@ -26,8 +26,8 @@ func NewLoadBalancer(c config.LoadBalancerConfig) *LoadBalancer {
 		for i, server := range c.Hosts {
 			lb.hosts[i] = server
 			globallog.WithFields(logrus.Fields{
-				"host":   server,
-				"index":  i,
+				"host":  server,
+				"index": i,
 			}).Debug("adding lb host")
 		}
 	} else {

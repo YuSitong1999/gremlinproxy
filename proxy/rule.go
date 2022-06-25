@@ -2,10 +2,9 @@ package proxy
 
 import (
 	"errors"
-	"github.com/ResilienceTesting/gremlinproxy/config"
+	"github.com/YuSitong1999/gremlinproxy/config"
 	str "strings"
 	"time"
-
 )
 
 // MessageType is just that a type: request or reply
@@ -65,9 +64,9 @@ var actionMap = map[ActionType]string{
 // }
 
 var distributionMap = map[ProbabilityDistribution]string{
-	ProbUniform: "uniform",
+	ProbUniform:     "uniform",
 	ProbExponential: "exponential",
-	ProbNormal: "normal",
+	ProbNormal:      "normal",
 }
 
 //message channel type between client and server, via the proxy
@@ -81,42 +80,42 @@ const (
 
 var rMap = map[MessageType]string{
 	MTypeUnknown: "unknown",
-	Request: "request",
-	Response: "response",
-	Publish: "publish",
-	Subscribe: "subscribe",
+	Request:      "request",
+	Response:     "response",
+	Publish:      "publish",
+	Subscribe:    "subscribe",
 }
 
 // Rule is a universal type for all rules.
 type Rule struct {
-	Source    string
-	Dest      string
-	MType           MessageType
+	Source string
+	Dest   string
+	MType  MessageType
 	//Method       ActionMethod
 
 	//Select only messages that match pattens specified in these fields
-	BodyPattern      string
-	HeaderPattern    string
+	BodyPattern   string
+	HeaderPattern string
 
 	// Probability float64
 	// Distribution string
-	
+
 	// First delay, then mangle and then abort
 	// One could set the probabilities of these variables to 0/1 to toggle them on or off
 	// We effectively get 8 combinations but only few make sense.
-	DelayProbability  float64
-	DelayDistribution ProbabilityDistribution
+	DelayProbability   float64
+	DelayDistribution  ProbabilityDistribution
 	MangleProbability  float64
 	MangleDistribution ProbabilityDistribution
-	AbortProbability  float64
-	AbortDistribution ProbabilityDistribution
+	AbortProbability   float64
+	AbortDistribution  ProbabilityDistribution
 
 	//TestID       string
-	DelayTime time.Duration
-	ErrorCode int
-	SearchString string
+	DelayTime     time.Duration
+	ErrorCode     int
+	SearchString  string
 	ReplaceString string
-	Enabled bool
+	Enabled       bool
 }
 
 // NopRule is a rule that does nothing. Useful default return value
@@ -145,22 +144,22 @@ func NewRule(c config.RuleConfig) (Rule, error) {
 	var r Rule
 	var err error
 	/*
-	// Convert actions into masks so we can check them quickly
-	for _, a := range c.Actions {
-		switch str.ToLower(a) {
-		case "abort":
-			r.Action = r.Action | ActionAbort
-			break
-		case "delay":
-			r.Action = r.Action | ActionDelay
-			break
-		case "abort_or_delay":
-			r.Action = r.Action | ActionAbortOrDelay
-			break
-		default:
-			return NopRule, errors.New("Unsupported action")
-		}
-	}*/
+		// Convert actions into masks so we can check them quickly
+		for _, a := range c.Actions {
+			switch str.ToLower(a) {
+			case "abort":
+				r.Action = r.Action | ActionAbort
+				break
+			case "delay":
+				r.Action = r.Action | ActionDelay
+				break
+			case "abort_or_delay":
+				r.Action = r.Action | ActionAbortOrDelay
+				break
+			default:
+				return NopRule, errors.New("Unsupported action")
+			}
+		}*/
 	// Convert request/reply types
 	switch str.ToLower(c.MType) {
 	case "request":
@@ -227,9 +226,9 @@ func NewRule(c config.RuleConfig) (Rule, error) {
 		r.DelayTime = time.Duration(0)
 	}
 
-//	switch str.ToLower(c.Method) {
-//	case "hang":
-//		r.Method = MethodHang
+	//	switch str.ToLower(c.Method) {
+	//	case "hang":
+	//		r.Method = MethodHang
 	// case "reset":
 	// 	r.Method = MethodReset
 	// case "error":
@@ -265,7 +264,6 @@ func (r *Rule) ToConfig() config.RuleConfig {
 	// c.TestID = r.TestID
 	c.BodyPattern = r.BodyPattern
 
-
 	c.DelayDistribution = distributionMap[r.DelayDistribution]
 	c.MangleDistribution = distributionMap[r.MangleDistribution]
 	c.AbortDistribution = distributionMap[r.AbortDistribution]
@@ -274,7 +272,7 @@ func (r *Rule) ToConfig() config.RuleConfig {
 	c.MangleProbability = r.MangleProbability
 	c.AbortProbability = r.AbortProbability
 
-//	c.Method = methodMap[r.Method]
+	//	c.Method = methodMap[r.Method]
 
 	c.DelayTime = r.DelayTime.String()
 	c.ErrorCode = r.ErrorCode
