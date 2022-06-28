@@ -1,3 +1,4 @@
+// Package proxy 负载平衡器:实际上保存了多个等价的微服务，供代理选择
 package proxy
 
 import (
@@ -11,6 +12,7 @@ import (
 //var globallog = config.GlobalLogger
 
 // LoadBalancer is in charge of switching up which host the request goes to
+// 负载平衡器: 负责将请求切换到哪个主机
 type LoadBalancer struct {
 	mode     string
 	hosts    []string
@@ -19,6 +21,7 @@ type LoadBalancer struct {
 }
 
 // NewLoadBalancer creates a new load balancer
+// 返回负载均衡器(可以没有)
 func NewLoadBalancer(c config.LoadBalancerConfig) *LoadBalancer {
 	var lb LoadBalancer
 	if c.Hosts != nil && len(c.Hosts) > 0 {

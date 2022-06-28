@@ -9,6 +9,8 @@ import (
 // instance doing the forwarding.
 // It could potentially be augmented to encapsulate functionality for discovering service
 // instances through zookeper (or potentially other services)
+// 服务是远程端点的封装。它包含执行转发的代理实例。
+// 可以对其进行扩展，以封装通过zookeper（或潜在的其他服务）发现服务实例的功能
 type Service struct {
 	Name  string
 	Proxy *proxy.Proxy

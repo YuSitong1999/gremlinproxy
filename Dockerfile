@@ -1,11 +1,26 @@
-FROM alpine:3.1
+FROM golang:1.16-alpine3.15 AS build
 
-ADD example-config.json /opt/gremlinproxy/
-ADD gremlinproxy /opt/gremlinproxy/
-CMD ["/opt/gremlinproxy/gremlinproxy", "-c", "/opt/gremlinproxy/example-config.json"]
+# Set destination for COPY
+WORKDIR /
 
-# Expose control port.
-EXPOSE 9876
+# Copy the source code. Note the slash at the end, as explained in
+# https://docs.docker.com/engine/reference/builder/#copy
+COPY go.mod .
+COPY go.sum .
+COPY *.go .
+COPY config /config
+COPY proxy /proxy
+COPY router /router
+COPY services /services
 
-## IMPORTANT: expose all proxy ports that you want gremlinproxy to listen on for your application services (from the proxy block in config file)
-EXPOSE 7777
+RUN go env -w GOPROXY=https://goproxy.cn
+RUN go mod download
+
+# Build
+RUN go build -o /gremlinproxy
+
+FROM alpine:3.15
+
+WORKDIR /
+
+COPY --from=build /gremlinproxy /gremlinproxy

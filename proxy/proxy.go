@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
-	"encoding/json"
 	"fmt"
 	"github.com/YuSitong1999/gremlinproxy/config"
 	"github.com/sirupsen/logrus"
@@ -26,28 +25,28 @@ var globallog = config.GlobalLogger
 
 // Proxy implements the proxying logic between a pair of services.
 // A single router can have multiple proxies, one for each service that the local service needs to talk to
+// 实现一对服务之间的代理逻辑。
+// 一个路由器可以有多个代理，本地服务需要与之对话的每个服务对应一个代理
 type Proxy struct {
-	name     string
-	testid   string
-	port     uint16
-	bindhost string
-	Protocol string
-	rules    map[MessageType][]Rule
-	ruleLock *sync.RWMutex
-	/**
-	expects    map[string]chan int
-	expectLock *sync.RWMutex
-	**/
+	name       string
+	testid     string
+	port       uint16
+	bindhost   string
+	Protocol   string
+	rules      map[MessageType][]Rule
+	ruleLock   *sync.RWMutex
 	httpclient http.Client
 	lb         *LoadBalancer
 	httpregexp *regexp.Regexp
 }
 
 // NewProxy returns a new proxy instance.
+// 新建并返回一个代理实例
 func NewProxy(serviceName string, conf config.ProxyConfig,
 	lbconf config.LoadBalancerConfig) *Proxy {
 	var p Proxy
 	p.name = serviceName
+	// 服务必须有后端实例
 	if lbconf.Hosts == nil || len(lbconf.Hosts) < 1 {
 		fmt.Println("Missing backend instances for service " + serviceName)
 		os.Exit(1)
@@ -63,16 +62,13 @@ func NewProxy(serviceName string, conf config.ProxyConfig,
 	p.Protocol = conf.Protocol
 	p.rules = map[MessageType][]Rule{Request: {}, Response: {}}
 	p.ruleLock = new(sync.RWMutex)
-	/**
-	p.expects = map[string]chan int{}
-	p.expectLock = new(sync.RWMutex)
-	**/
 	p.httpregexp = regexp.MustCompile("^https?://")
 	return &p
 }
 
 // getRule returns first rule matched to the given request. If no stored rules match,
 // a special NOPRule is returned.
+// 返回首个匹配请求的规则, 不存在返回NOPRule
 func (p *Proxy) getRule(r MessageType, reqID string, data []byte) Rule {
 	p.ruleLock.RLock()
 	defer p.ruleLock.RUnlock()
@@ -142,34 +138,12 @@ func (p *Proxy) getRule(r MessageType, reqID string, data []byte) Rule {
 	return NopRule
 }
 
-/**
-// expectCheck matches data against much any data the proxy should be seeing (i.e. expecting) on the wire
-func (p *Proxy) expectCheck(data []byte) {
-	p.expectLock.RLock()
-	defer p.expectLock.RUnlock()
-	if len(p.expects) == 0 {
-		return
-	}
-	for k, v := range p.expects {
-		go func(k string, v chan int, data []byte) {
-			b, err := regexp.Match(k, data)
-			if err != nil {
-				globallog.Error("Rule matching error")
-				return
-			}
-			if b {
-				v <- 1
-			}
-		}(k, v, data)
-	}
-}
-**/
-
 func glueHostAndPort(host string, port uint16) string {
 	return host + ":" + strconv.Itoa(int(port))
 }
 
 // Run starts up a proxy in the desired mode: tcp or http. This is a blocking call
+// 阻塞调用TCP或HTTP代理
 func (p *Proxy) Run() {
 	globallog.WithFields(logrus.Fields{
 		"service":  p.name,
@@ -210,34 +184,6 @@ func (p *Proxy) Run() {
 	}
 }
 
-// tcpReadWrite handles low-level details of the proxying between two TCP connections
-// FIXME: update this to the new RULE format
-// func (p *Proxy) tcpReadWrite(src, dst *net.TCPConn, rtype MessageType, wg *sync.WaitGroup) {
-// 	// Copy the data from one connection to the other
-// 	data := make([]byte, 65536) //FIXME: This is bad.
-// 	defer wg.Done()
-// 	for {
-// 		n, err := src.Read(data)
-// 		if err != nil {
-// 			dst.Close()
-// 			return
-// 		}
-
-// 	   var i int = 0
-// 	   var n2 int = 0
-
-// 	   for (n2 < n) {
-// 			i, err = dst.Write(data[n2:n])
-// 			if err != nil {
-// 				src.Close()
-// 				return
-// 			}
-// 			//we have to write n-i more bytes
-// 			n2 = n2 + i
-// 	   }
-// 	}
-// }
-
 func copyBytes(dest, src *net.TCPConn, wg *sync.WaitGroup) {
 	defer wg.Done()
 	io.Copy(dest, src)
@@ -247,15 +193,20 @@ func copyBytes(dest, src *net.TCPConn, wg *sync.WaitGroup) {
 
 //TODO: Need to add connection termination in the middle of a connection & bandwidth throttling.
 // Delay implementation is half-baked (only adds initial delay).
+// 需要在连接和带宽限制的中间 添加连接终止。
+// 延迟实现不完善（只会增加初始延迟）。
 
 // proxyTCP is responsible for handling a new TCP connection.
+// 代理TCP连接
 func (p *Proxy) proxyTCP(conn *net.TCPConn) {
 
 	//We can abort the connection immediately, in case of an Abort action.
+	// 可以立即终止
 	//FIXME: Need to have a way to abort in the middle of a connection too.
 	rule := p.getRule(Request, "", nil)
 	t := time.Now()
 
+	// 随即决定执行延迟
 	//FIXME: Add proper delay support for TCP channels.
 	if (rule.DelayProbability > 0.0) &&
 		drawAndDecide(rule.DelayDistribution, rule.DelayProbability) {
@@ -271,6 +222,7 @@ func (p *Proxy) proxyTCP(conn *net.TCPConn) {
 		time.Sleep(rule.DelayTime)
 	}
 
+	// 随即决定是否执行中断
 	if (rule.AbortProbability > 0.0) &&
 		drawAndDecide(rule.AbortDistribution, rule.AbortProbability) {
 		proxylog.WithFields(logrus.Fields{
@@ -301,10 +253,9 @@ func (p *Proxy) proxyTCP(conn *net.TCPConn) {
 		return
 	}
 	// Make sure to copy data both directions, do it in separate threads
+	// 确保双向复制数据，在单独的线程中执行
 	var wg sync.WaitGroup
 	wg.Add(2)
-	//	go p.tcpReadWrite(conn, rConn, Request, &wg)
-	//	go p.tcpReadWrite(rConn, conn, Response, &wg)
 	//from proxier.go code in Kubernetes
 	go copyBytes(conn, rConn, &wg)
 	go copyBytes(rConn, conn, &wg)
@@ -314,16 +265,22 @@ func (p *Proxy) proxyTCP(conn *net.TCPConn) {
 }
 
 //TODO: Need to add drip rule for HTTP (receiver taking in data byte by byte or sender sending data byte by byte, in low bandwidth situations).
+// 需要为HTTP添加drip规则（在低带宽情况下，接收方逐字节接收数据或发送方逐字节发送数据）。
 //TODO: In the request path, a slow receiver will cause buffer bloat at sender and ultimately lead to memory pressure -- VALIDATE
+// 在请求路径中，接收速度慢会导致发送方缓冲区膨胀，并最终导致内存压力——验证
 //TODO: In the response path, emulating a slow response will keep caller connection alive but ultimately delay full req processing, sending HTTP header first, then byte by byte
 //	-- VALIDATE if this is useful for common frameworks in languages like Java, Python, Node, Ruby, etc.
+// 在响应路径中，模拟慢速响应将使调用方连接保持活动状态，但最终会延迟完整的请求处理，首先发送HTTP头，然后逐字节发送
+// --验证这对于Java、Python、Node、Ruby等语言中的通用框架是否有用。
 ///If its not true, there is no need to emulate drip at all.
 // ServeHTTP: code that handles proxying of all HTTP requests
+// 如果不是这样，就根本没有必要模仿滴水。
 
 /* FIXME: BUG This method reads requests/replies into memory.
 * DO NOT use this on very large size requests.
  */
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	//// 在请求开始前，对请求注入故障
 	reqID := req.Header.Get(config.TrackingHeader)
 	var rule Rule
 	var decodedData []byte
@@ -352,6 +309,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	//// 代理执行请求
+	// 负载平衡器
 	var host = p.lb.GetHost()
 	globallog.WithFields(logrus.Fields{
 		"service": p.name,
@@ -359,6 +318,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		"host":    host}).Debug("Sending to")
 
 	// If scheme (http/https is not explicitly specified, construct a http request to the requested service
+	// 如果未指明是HTTP还是HTTPS，则加上http
 	if !p.httpregexp.MatchString(host) {
 		host = "http://" + host
 	}
@@ -401,6 +361,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	//// 对回复注入故障
 	// Read the response and see if it matches any rules
 	rule = NopRule
 	data, err = readBody(resp.Body)
@@ -416,9 +377,6 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				"errmsg":  err.Error()}).Error("Error reading HTTP reply")
 			rule = NopRule
 		} else {
-			// Check if we were expecting this
-			//p.expectCheck(decodedData)
-
 			// Execute rules, if any
 			rule = p.getRule(Response, reqID, decodedData)
 		}
@@ -429,6 +387,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	//// 代理返回
 	//return resp to caller
 	for k, v := range resp.Header {
 		for _, vv := range v {
@@ -446,6 +405,8 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 // Executes the rule on the request path or response path. ResponseWriter corresponds to the caller's connection
 // Returns a bool, indicating whether we should continue request processing further or not
+// 在请求路径或响应路径上执行规则。ResponseWriter对应于调用方的连接
+// 返回bool，指示是否成功中止
 func (p *Proxy) doHTTPAborts(reqID string, rule Rule, w http.ResponseWriter) bool {
 
 	if rule.ErrorCode < 0 {
@@ -478,13 +439,14 @@ func (p *Proxy) doHTTPAborts(reqID string, rule Rule, w http.ResponseWriter) boo
 		}
 
 		// Close the connection, discarding any unacked data
+		// 丢弃未应答数据并关闭
 		tcpConn, ok := conn.(*net.TCPConn)
 		if ok {
 			tcpConn.SetLinger(0)
 			tcpConn.Close()
 		} else {
 			//we couldn't type cast net.Conn to net.TCPConn successfully.
-			//This shouldn't occur unless the underlying transport is not TCP.
+			//This shouldn't occur unless the underlying transport is not TCP. TODO 应该报错
 			conn.Close()
 		}
 	} else {
@@ -497,6 +459,8 @@ func (p *Proxy) doHTTPAborts(reqID string, rule Rule, w http.ResponseWriter) boo
 
 // Fault injection happens here.
 // Log every request with valid reqID irrespective of fault injection
+// 此处发生故障注入。 不论是否有故障注入，使用有效的reqID记录每个请求。
+// 返回是否终止
 func (p *Proxy) executeRequestRule(reqID string, rule Rule, req *http.Request, body []byte, w http.ResponseWriter) bool {
 
 	var actions []string
@@ -504,19 +468,24 @@ func (p *Proxy) executeRequestRule(reqID string, rule Rule, req *http.Request, b
 	t := time.Now()
 
 	if rule.Enabled {
+		// FIXME 概率总和等于1，必然触发其中一个?
 		globallog.WithField("rule", rule.ToConfig()).Debug("execRequestRule")
 
+		// 注入延迟
 		if (rule.DelayProbability > 0.0) &&
 			drawAndDecide(rule.DelayDistribution, rule.DelayProbability) {
+			globallog.Printf("executeRequestRule delay")
 			// In future, this could be dynamically computed -- variable delays
 			delay = rule.DelayTime
 			actions = append(actions, "delay")
 			time.Sleep(rule.DelayTime)
 		}
 
+		// 注入中止
 		if (rule.AbortProbability > 0.0) &&
 			drawAndDecide(rule.AbortDistribution, rule.AbortProbability) &&
 			p.doHTTPAborts(reqID, rule, w) {
+			globallog.Printf("executeRequestRule abort")
 			actions = append(actions, "abort")
 			errorCode = rule.ErrorCode
 			retVal = false
@@ -550,8 +519,10 @@ func (p *Proxy) executeResponseRule(reqID string, rule Rule, resp *http.Response
 	t := time.Now()
 
 	if rule.Enabled {
+		// FIXME 概率总和等于1，必然触发其中一个?
 		if (rule.DelayProbability > 0.0) &&
 			drawAndDecide(rule.DelayDistribution, rule.DelayProbability) {
+			globallog.Printf("executeResponseRule delay")
 			// In future, this could be dynamically computed -- variable delays
 			delay = rule.DelayTime
 			actions = append(actions, "delay")
@@ -561,6 +532,7 @@ func (p *Proxy) executeResponseRule(reqID string, rule Rule, resp *http.Response
 		if (rule.AbortProbability > 0.0) &&
 			drawAndDecide(rule.AbortDistribution, rule.AbortProbability) &&
 			p.doHTTPAborts(reqID, rule, w) {
+			globallog.Printf("executeResponseRule abort")
 			actions = append(actions, "abort")
 			errorCode = rule.ErrorCode
 			retVal = false
@@ -607,6 +579,7 @@ func (p *Proxy) RemoveRule(r Rule) bool {
 		}
 	}
 	p.ruleLock.RUnlock()
+	// FIXME 并发Bug: 同时删除多个操作，部分删除会被覆盖
 	p.ruleLock.Lock()
 	p.rules[r.MType] = b
 	p.ruleLock.Unlock()
@@ -638,43 +611,9 @@ func (p *Proxy) Reset() {
 	p.rules = map[MessageType][]Rule{Request: {},
 		Response: {}}
 	p.ruleLock.Unlock()
-	/**
-	// lock expects, clear, unlock
-	p.expectLock.Lock()
-	p.expects = map[string]chan int{}
-	p.expectLock.Unlock()
-	**/
 }
-
-/**
-// Expect waits for a pattern to be encountered on the wire, up until timeout, if timeout > 0
-// Returns value < 0 if we timeout'd  OR >0 if we saw the expected pattern on the wire
-func (p *Proxy) Expect(pattern string, timeout time.Duration) int {
-	// Add a new expect to the list
-	p.expectLock.Lock()
-	c := make(chan int)
-	p.expects[pattern] = c
-	p.expectLock.Unlock()
-	// If we have a timeout, set it up.
-	if timeout > 0 {
-		time.AfterFunc(timeout, func() {
-			// after timeout write a value on the channel
-			c <- -1
-		})
-	}
-	// Wait for the value, which means we've seen something or timeout'd.
-	val := <-c
-	// Remove the expect
-	p.expectLock.Lock()
-	delete(p.expects, pattern)
-	p.expectLock.Unlock()
-	return val
-}
-**/
 
 func (p *Proxy) SetTestID(testID string) {
-	//	p.expectLock.Lock()
-	//	defer p.expectLock.Unlock()
 	p.testid = testID
 	t := time.Now()
 	proxylog.WithFields(logrus.Fields{
@@ -686,15 +625,11 @@ func (p *Proxy) SetTestID(testID string) {
 }
 
 func (p *Proxy) getmyID() string {
-	//	p.expectLock.RLock()
-	//	defer p.expectLock.RUnlock()
 	return p.testid
 }
 
 func (p *Proxy) StopTest(testID string) bool {
 	t := time.Now()
-	//	p.expectLock.Lock()
-	//	defer p.expectLock.Unlock()
 	if testID == p.testid {
 		p.testid = ""
 		return true
@@ -716,6 +651,7 @@ func readBody(r io.Reader) ([]byte, error) {
 
 // Take the raw bytes from a request (or response) and run them through a decompression
 // algorithm so we can run the regex on it or log it.
+// 对于gzip和deflate压缩的原始数据解压，其它不变，来正则匹配或记录
 func decodeBody(raw []byte, ct string, ce string) ([]byte, error) {
 	if str.Contains(ce, "gzip") {
 		gr, err := gzip.NewReader(bytes.NewBuffer(raw))
@@ -735,20 +671,9 @@ func decodeBody(raw []byte, ct string, ce string) ([]byte, error) {
 	return raw, nil
 }
 
-// Try to read in an arbitrary json object in the body of the request (or response)
-// so we can log it.
-func tryGetJSON(raw []byte) interface{} {
-	var o interface{}
-	err := json.Unmarshal(raw, &o)
-	if err != nil {
-		globallog.Warn("Could not get JSON from byte array")
-		return raw
-	}
-	return o
-}
-
 // drawAndDecide draws from a given distribution and compares (<) the result to a threshold.
 // This determines whether an action should be taken or not
+// 根据随机数的分布和概率进行随机，决定是否执行
 func drawAndDecide(distribution ProbabilityDistribution, probability float64) bool {
 	//	fmt.Printf("In draw and decide with dis %s, thresh %f", DistributionString(distribution), probability);
 
@@ -760,7 +685,7 @@ func drawAndDecide(distribution ProbabilityDistribution, probability float64) bo
 	case ProbNormal:
 		return rand.NormFloat64() < probability
 	default:
-		//		globallog.Warn("Unknown probability distribution " + distribution + ", defaulting to coin flip")
+		globallog.Warnf("Unknown probability distribution %d, defaulting to coin flip", distribution)
 		return rand.Float64() < .5
 	}
 }

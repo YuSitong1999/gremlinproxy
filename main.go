@@ -13,6 +13,7 @@ import (
 
 func main() {
 	// Read config
+	// 读配置
 	cpath := flag.String("c", "", "Path to the config file")
 	flag.Parse()
 	if *cpath == "" {
@@ -29,6 +30,7 @@ func main() {
 	}
 
 	if conf.LogstashHost != "" {
+		// 尝试用UDP请求发送日志到log stash服务
 		conn, err := net.Dial("udp", conf.LogstashHost)
 		if err == nil {
 			config.ProxyLogger.Out = conn
@@ -52,6 +54,8 @@ func main() {
 	} else {
 		log.Level = logrus.InfoLevel
 	}
+
+	// 必须设置要追踪的请求头
 	config.TrackingHeader = conf.Router.TrackingHeader
 	log.WithField("trackingHeader", config.TrackingHeader).Debug("Config value")
 	if config.TrackingHeader == "" {

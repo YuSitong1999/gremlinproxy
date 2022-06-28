@@ -23,6 +23,7 @@ var log = config.GlobalLogger
 // Router maintains all the state. It keeps a list or remote services we talk
 // to, and exposes a REST
 // API for configuring router rules
+// 维护所有状态：所有远程服务 和 路由规则配置接口
 type Router struct {
 	services []*services.Service
 	RESTPort uint16
@@ -30,7 +31,8 @@ type Router struct {
 	serviceNameMap map[string]*services.Service
 }
 
-// NewRouter creates a new router and configures unerlying services
+// NewRouter creates a new router and configures underlying services
+// 创建路由 和 配置下层服务
 func NewRouter(conf config.Config) Router {
 	var r Router
 	r.services = make([]*services.Service, len(conf.Services))
@@ -42,7 +44,7 @@ func NewRouter(conf config.Config) Router {
 	}
 	r.RESTPort = conf.Router.Port
 	logstashHost = conf.LogstashHost
-	config.ProxyFor = conf.Router.Name
+	config.ProxyFor = conf.Router.Name // TODO ?
 	return r
 }
 
@@ -56,19 +58,24 @@ func (r *Router) Run() {
 	r.exposeREST()
 }
 
+// 暴露REST配置接口
 func (r *Router) exposeREST() {
 	// Expose a REST configuration interface
 	hr := httprouter.New()
 	hr.GET("/gremlin/v1", restHello)
+	// 对规则：新增、删除、显示、重置
 	hr.POST("/gremlin/v1/rules/add", r.AddRule)
 	hr.POST("/gremlin/v1/rules/remove", r.RemoveRule)
 	hr.GET("/gremlin/v1/rules/list", r.ListRules)
 	hr.DELETE("/gremlin/v1/rules", r.Reset)
+	// 对实例：获取、设置、移除
 	hr.GET("/gremlin/v1/proxy/:service/instances", r.GetInstances)
 	hr.PUT("/gremlin/v1/proxy/:service/:instances", r.SetInstances)
 	hr.DELETE("/gremlin/v1/proxy/:service/instances", r.RemoveInstances)
+	// 对测试：设置、移除
 	hr.PUT("/gremlin/v1/test/:id", r.SetTest)
 	hr.DELETE("/gremlin/v1/test/:id", r.RemoveTest)
+	// 运行
 	log.WithField("port", r.RESTPort).Debug("Running REST server")
 	http.ListenAndServe(":"+strconv.Itoa(int(r.RESTPort)), hr)
 }
@@ -88,7 +95,7 @@ func (r *Router) AddRule(w http.ResponseWriter, req *http.Request, _ httprouter.
 	log.Debug("Added rule")
 }
 
-// ListRules retuns a list of rules at all proxies in JSON format
+// ListRules returns a list of rules at all proxies in JSON format
 func (r *Router) ListRules(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var readableRules []config.RuleConfig
 	for _, s := range r.services {
@@ -186,30 +193,9 @@ func (r *Router) RemoveInstances(w http.ResponseWriter, req *http.Request, param
 	w.Write([]byte(config.OK))
 }
 
-/**
-// Expect is a special form of rule/request where we are waiting for a certain pattern on the wire.
-// This blocks until we see the pattern, or we timeout. HTTP keep-alives must be enabled.
-func (r *Router) Expect(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	s, rule, err := r.readRule(req)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
-		return
-	}
-
-	val := s.Proxy.Expect((*rule).BodyPattern, (*rule).DelayTime)
-	if val >= 0 { //all is good, we saw the pattern
-		w.WriteHeader(http.StatusOK)
-	} else { // we timed out
-		w.WriteHeader(http.StatusRequestTimeout)
-	}
-}
-**/
-
 // readRule converts JSON rule POSTed to us to a Rule object
 func (r *Router) readRule(req *http.Request) (*services.Service, *proxy.Rule, error) {
 	d := json.NewDecoder(req.Body)
-	// defer req.Body.Close()
 
 	// Try to automatically decode this from JSON into a config
 	var ruleconf config.RuleConfig
@@ -220,7 +206,7 @@ func (r *Router) readRule(req *http.Request) (*services.Service, *proxy.Rule, er
 	}
 
 	//check if source matches the router name
-	if (ruleconf.Source != config.ProxyFor) {
+	if ruleconf.Source != config.ProxyFor {
 		log.WithField("Source", ruleconf.Source).Warning("Rule not targeted for this Router")
 		return nil, nil, errors.New("Router name does not match Source " + ruleconf.Source)
 	}
